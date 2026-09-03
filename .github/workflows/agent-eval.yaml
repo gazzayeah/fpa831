@@ -1,7 +1,8 @@
 # Agent eval (FIN-001–005) and Agent Engine deploy
 #
-# Eval is model-free (no WIF). Deploy runs as terraform-sa after a green eval
-# on push to main, or on workflow_dispatch. Pull requests eval only.
+# Eval is model-free (no WIF). Deploy runs as terraform-sa only after a green
+# eval on workflow_dispatch (Actions → Agent eval → Run workflow). Push/PR
+# are eval-only.
 # Staging bucket is created by tenant Terraform (google_storage_bucket.agent_staging).
 
 name: Agent eval
@@ -82,7 +83,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   deploy:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_agent_engine == 'true')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_agent_engine == 'true'
     needs: eval
     runs-on: ubuntu-latest
     concurrency:

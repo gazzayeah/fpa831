@@ -48,9 +48,13 @@ export GOOGLE_CLOUD_PROJECT=light-operator-364723
 export GOOGLE_CLOUD_LOCATION=us-central1
 export GOOGLE_GENAI_USE_VERTEXAI=true
 
-# Browser UI — run from the package dir so ADK finds agent.py
+# Browser UI — run from the package dir so ADK finds agent.py.
+# --no-reload is the magic word: ADK defaults to uvicorn --reload, which
+# starts a parent+child that both want :8000. Ctrl+Z (or a second start)
+# then fails with "address already in use". Stop with Ctrl+C, not Ctrl+Z.
+kill -9 $(lsof -t -iTCP:8000 -sTCP:LISTEN) 2>/dev/null
 cd financial_processing_agent
-uv run python -m google.adk.cli web
+uv run python -m google.adk.cli web --no-reload
 
 # Or a single terminal session
 uv run python -m google.adk.cli run financial_processing_agent
@@ -153,7 +157,7 @@ uv run python financial_processing_agent/deployment/deploy.py --apply --resource
 uv run python financial_processing_agent/deployment/deploy.py --delete projects/.../reasoningEngines/ID
 ```
 
-GitHub Actions **Agent eval**: pytest on every PR; **deploy after eval on push to `main`**, and on `workflow_dispatch`. Deploy identity is `terraform-sa` (WIF); runtime is `agent-dev`. After the first create, set repo variable `AGENT_ENGINE_RESOURCE` to the printed resource name so updates are explicit if listing fails.
+GitHub Actions **Agent eval**: pytest on PR and push to `main`. **Deploy Agent Engine only from Actions → Agent eval → Run workflow** (`deploy_agent_engine` defaults to true). Deploy identity is `terraform-sa` (WIF); runtime is `agent-dev`. After the first create, set repo variable `AGENT_ENGINE_RESOURCE` to the printed resource name so the next manual run updates if listing fails.
 
 ## Design note
 
@@ -180,5 +184,5 @@ Tenant Terraform lives in [`iac/terraform`](iac/terraform) (Agent Engine staging
 foundations (WIF, `terraform-sa`, `agent-dev`, state bucket) stay in `iac_main`. This
 repo’s state prefix is `fpa831/dev`. GitHub Actions plan Terraform on
 IaC pull requests, apply on `main`, run **agent eval** on agent/corpus PRs, and
-**deploy Agent Engine** after a green eval on `main`. See
+**deploy Agent Engine** only when you click **Run workflow** on Agent eval. See
 [`.github/workflows/README.md`](.github/workflows/README.md).

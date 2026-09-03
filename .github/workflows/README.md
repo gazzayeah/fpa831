@@ -8,7 +8,7 @@ Reusable Terraform workflows live at the top level of `.github/workflows/`
 | `terraform-plan.yaml` | Reusable plan workflow (`workflow_call`) |
 | `terraform-apply.yaml` | Reusable apply workflow (`workflow_call`) |
 | `tenant_iac_deployment.yaml` | Caller: plan/apply `iac/terraform` |
-| `agent-eval.yaml` | pytest + FIN-001–005; Agent Engine deploy on `main` (after eval) |
+| `agent-eval.yaml` | pytest + FIN-001–005; Agent Engine deploy on **Run workflow** only |
 
 Copied from `iac_main` so this tenant repo can run CI without calling a
 private reusable workflow in another repository. WIF identities stay in
@@ -39,8 +39,9 @@ when `financial_processing_agent/**`, `docs/finance_rag_corpus/**`,
 Uses `uv` at the **repository root** (Python 3.12, `--extra dev`, `--frozen`),
 matching `iac_main`. Eval does not call a model.
 
-**Deploy** runs after a green eval on **push to `main`/`master`**, and on
-`workflow_dispatch` when `deploy_agent_engine` is true. It authenticates as
+**Deploy** runs only on **Actions → Agent eval → Run workflow** when
+`deploy_agent_engine` is true (the default). Push and pull request are
+eval-only. Deploy authenticates as
 `terraform-sa` (WIF), waits for `gs://light-operator-364723-fpa831-agent-dev`
 (created by tenant Terraform), then
 `uv run python financial_processing_agent/deployment/deploy.py --apply`.
