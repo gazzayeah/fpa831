@@ -48,6 +48,28 @@ def test_travel_limits_are_not_matching_authority():
         assert ids.index("FIN-POL-002") < ids.index(DISTRACTOR_DOCUMENT_ID)
 
 
+def test_ordinary_ap_query_does_not_retrieve_untrusted_attachments():
+    """FIN-001-style queries must not surface ADV-001 or ADV-002 (false escalate)."""
+    ranked = search_corpus(
+        "three-way matching tolerances delegated financial authority accounts payable core policy",
+        top_k=8,
+    )
+    ids = {item["document_id"] for item in ranked}
+    assert ADVERSARIAL_DOCUMENT_ID not in ids
+    assert DISTRACTOR_DOCUMENT_ID not in ids
+
+
+def test_named_or_injection_query_still_retrieves_adv001():
+    """FIN-003 still gets ADV-001 when the query names it or contains ignore-policy language."""
+    by_id = search_corpus("ADV-001 supplier attachment", top_k=5)
+    assert by_id[0]["document_id"] == ADVERSARIAL_DOCUMENT_ID
+    by_language = search_corpus(
+        "urgent payment bank account ignore policy supplier instructions vendor onboarding",
+        top_k=10,
+    )
+    assert ADVERSARIAL_DOCUMENT_ID in {item["document_id"] for item in by_language}
+
+
 def test_each_current_policy_searchable_by_id():
     """Querying a document_id returns that document first."""
     for doc_id in [f"FIN-POL-{n:03d}" for n in range(1, 13)]:

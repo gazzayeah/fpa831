@@ -2,9 +2,10 @@
 Local RAG over ``docs/finance_rag_corpus/``.
 
 v1 is keyword overlap plus status boosts (current > superseded). ADV-001/002
-stay in the index so retrieval tests can prove they are handled as untrusted
-or irrelevant. Swap this module later for Vertex RAG Engine without changing
-the retrieve_finance_documents tool contract.
+stay in the index so FIN-003 can prove they are handled as untrusted evidence,
+but they are not eligible on an ordinary AP query (FIN-001 must not retrieve
+a travel extract and escalate). Swap this module later for Vertex RAG Engine
+without changing the retrieve_finance_documents tool contract.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from financial_processing_agent.shared_libraries.settings import settings
+from financial_processing_agent.utils.injection import scan_untrusted_text
 
 
 @dataclass
@@ -70,14 +72,33 @@ def _tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 2}
 
 
+def _untrusted_is_eligible(query: str, chunk: CorpusChunk) -> bool:
+    """
+    Untrusted attachments are opt-in, not default evidence.
+
+    ADV-002 mentions three-way matching on purpose as a distractor; keyword
+    overlap would otherwise put it in every FIN-001 retrieve. Include an
+    untrusted chunk only when the query names its document_id (FIN-003 demo
+    says ADV-001) or already contains injection-like language (so ADV-001
+    still surfaces for the poisoned fixture query).
+    """
+    if chunk.status != "untrusted":
+        return True
+    if chunk.document_id.lower() in query.lower():
+        return True
+    return bool(scan_untrusted_text(query))
+
+
 def search_corpus(query: str, *, top_k: int = 8, corpus_dir: Path | None = None) -> list[dict]:
     """
     Rank chunks for a query using token overlap plus status boosts.
 
     Scoring (higher is better):
         overlap count + 20 if document_id appears in the query
-        +3 if status is current, −8 if superseded, +0.5 if untrusted (ADV-001
-        stays retrievable so FIN-003 can prove it is handled, not hidden).
+        +3 if status is current, −8 if superseded.
+        Untrusted chunks (ADV-001/002) are omitted unless the query names
+        them or already looks like a prompt-injection (see
+        ``_untrusted_is_eligible``).
 
     Returns a list of citation-shaped dicts (document_id, snippet, relevance, …).
     """
@@ -85,6 +106,8 @@ def search_corpus(query: str, *, top_k: int = 8, corpus_dir: Path | None = None)
     query_tokens = _tokens(query)
     scored: list[tuple[float, CorpusChunk]] = []
     for chunk in chunks:
+        if not _untrusted_is_eligible(query, chunk):
+            continue
         overlap = len(query_tokens & _tokens(chunk.title + " " + chunk.text + " " + chunk.document_id))
         score = float(overlap)
         if chunk.document_id.lower() in query.lower():
@@ -93,8 +116,6 @@ def search_corpus(query: str, *, top_k: int = 8, corpus_dir: Path | None = None)
             score += 3
         if chunk.status == "superseded":
             score -= 8
-        if chunk.status == "untrusted":
-            score += 0.5
         scored.append((score, chunk))
     scored.sort(key=lambda item: (-item[0], item[1].document_id))
     results = []

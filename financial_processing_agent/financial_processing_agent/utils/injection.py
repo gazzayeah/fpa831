@@ -26,3 +26,14 @@ def scan_untrusted_text(*texts: str) -> list[str]:
         if re.search(pattern, blob):
             flags.append(pattern)
     return flags
+
+
+def flags_from_case_notes(notes: str) -> list[str]:
+    """
+    Authoritative injection flags for ``reconcile_case``.
+
+    An LLM may pass ``injection_flags`` because it saw ``status: untrusted``
+    on ADV-002 (travel meals). That is not an override attempt. Only language
+    in the invoice notes (FIN-003) may set flags used for the outcome.
+    """
+    return scan_untrusted_text(notes)

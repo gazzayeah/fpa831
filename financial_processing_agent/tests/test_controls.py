@@ -66,6 +66,31 @@ def test_submit_denied_without_approval():
         pass
 
 
+def test_reconcile_ignores_model_invented_injection_flags():
+    """ADK may pass ADV-002 as injection_flags; a clean FIN-001 must still approve."""
+    from financial_processing_agent.tools.check_invoice_history import check_invoice_history
+    from financial_processing_agent.tools.get_purchase_order import get_purchase_order
+    from financial_processing_agent.tools.get_vendor_record import get_vendor_record
+    from financial_processing_agent.tools.reconcile_case import reconcile_case
+
+    rec = reconcile_case(
+        {
+            "case_id": "FIN-001",
+            "invoice_reference": "INV-1001",
+            "vendor_id": "V-NORTHSTAR-100",
+            "po_id": "PO-1001",
+            "amount": "1200.00",
+            "currency": "AUD",
+            "notes": "Three-way match stationery order.",
+        },
+        get_vendor_record("V-NORTHSTAR-100"),
+        get_purchase_order("PO-1001"),
+        check_invoice_history("V-NORTHSTAR-100", "INV-1001", "1200.00", "AUD")["hits"],
+        injection_flags=["ADV-002", "untrusted document attempted to override controls"],
+    )
+    assert rec["outcome"] == "APPROVE_FOR_POSTING"
+
+
 def test_get_purchase_order_timeout_is_payload_not_raise():
     """FIN-004 PO-4001 must return timeout=True so ADK does not abort the turn."""
     from financial_processing_agent.tools.get_purchase_order import get_purchase_order

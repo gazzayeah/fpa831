@@ -1,8 +1,8 @@
-"""Agent Engine resource-name helper (no live Vertex call)."""
+"""Agent Engine resource-name helper and env-var contract (no live Vertex call)."""
 
 import pytest
 
-from deployment.deploy import normalize_engine_resource
+from deployment.deploy import RESERVED_ENGINE_ENV, _env, normalize_engine_resource
 
 
 def test_normalize_engine_resource_accepts_id_or_full_name():
@@ -41,3 +41,13 @@ def test_normalize_engine_resource_empty():
     """Empty input means create (or display-name lookup) in apply()."""
     assert normalize_engine_resource("") == ""
     assert normalize_engine_resource("   ") == ""
+
+
+def test_env_omits_reserved_agent_engine_names():
+    """Passing GOOGLE_CLOUD_PROJECT in env_vars is 400 FAILED_PRECONDITION."""
+    env = _env()
+    assert not RESERVED_ENGINE_ENV.intersection(env)
+    assert env["GCP_PROJECT_ID"]
+    assert env["GCP_LOCATION"]
+    assert env["GOOGLE_GENAI_USE_VERTEXAI"] == "true"
+    assert env["AGENT_MODEL"]

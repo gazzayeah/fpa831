@@ -64,6 +64,21 @@ _ENGINE_RESOURCE_RE = re.compile(
     r"^projects/[^/]+/locations/[^/]+/reasoningEngines/[0-9]+$"
 )
 
+# Agent Engine injects these; putting them in spec.deployment_spec.env is
+# FAILED_PRECONDITION ("Environment variable name 'X' is reserved").
+RESERVED_ENGINE_ENV = frozenset(
+    {
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_QUOTA_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "PORT",
+        "K_SERVICE",
+        "K_REVISION",
+        "K_CONFIGURATION",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+    }
+)
+
 
 def stage_extra_packages(dest: Path | None = None) -> Path:
     """Copy importable sources into a tree that does not include .venv or .env.
@@ -123,14 +138,25 @@ def _app():
 
 
 def _env() -> dict[str, str]:
-    """Remote process env. Corpus/fixtures come from bundled dirs, not these."""
-    return {
+    """Remote process env. Must not include RESERVED_ENGINE_ENV names.
+
+    Agent Engine already injects GOOGLE_CLOUD_PROJECT and
+    GOOGLE_CLOUD_LOCATION. Settings reads GCP_PROJECT_ID / GCP_LOCATION.
+    Corpus and fixtures come from bundled dirs, not these vars.
+    """
+    env = {
         "GCP_PROJECT_ID": settings.gcp_project_id,
-        "GOOGLE_CLOUD_PROJECT": settings.gcp_project_id,
-        "GOOGLE_CLOUD_LOCATION": settings.gcp_location,
+        "GCP_LOCATION": settings.gcp_location,
         "GOOGLE_GENAI_USE_VERTEXAI": "true",
         "AGENT_MODEL": settings.agent_model,
     }
+    reserved = RESERVED_ENGINE_ENV.intersection(env)
+    if reserved:
+        raise ValueError(
+            "Agent Engine reserved env names cannot be in spec.deployment_spec.env: "
+            + ", ".join(sorted(reserved))
+        )
+    return env
 
 
 def _staging_uri() -> str:
