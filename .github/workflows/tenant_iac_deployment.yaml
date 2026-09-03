@@ -1,0 +1,114 @@
+name: Tenant IaC Deployment
+
+on:
+  pull_request:
+    paths:
+      - "iac/terraform/**"
+      - ".github/workflows/tenant_iac_deployment.yaml"
+      - ".github/workflows/terraform-plan.yaml"
+      - ".github/workflows/terraform-apply.yaml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "iac/terraform/**"
+      - ".github/workflows/tenant_iac_deployment.yaml"
+      - ".github/workflows/terraform-plan.yaml"
+      - ".github/workflows/terraform-apply.yaml"
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  # Template knobs: set ENVIRONMENT_NAME and the unprefixed GCP/TF values below.
+  # Backend/var-file paths are derived as state_backend/${ENVIRONMENT_NAME}.hcl
+  # and variables/${ENVIRONMENT_NAME}.tfvars.
+  # WIF pool/provider and terraform-sa are owned by iac_main; this tenant
+  # reuses them. gazzayeah/fpa831 must be in iac_main github_repositories.
+  config:
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment_name || 'dev' }}
+
+      TF_WORKING_DIR: iac/terraform
+      TF_SA_ID: terraform-sa
+      WIF_POOL_ID: github-pool
+      WIF_PROVIDER_ID: github-provider
+
+      GCP_PROJECT_ID: light-operator-364723
+      GCP_PROJECT_NUMBER: "450520581207"
+    outputs:
+      environment_name: ${{ steps.select.outputs.environment_name }}
+      tf_working_dir: ${{ steps.select.outputs.tf_working_dir }}
+      tf_backend_config: ${{ steps.select.outputs.tf_backend_config }}
+      tf_var_file: ${{ steps.select.outputs.tf_var_file }}
+      gcp_project_id: ${{ steps.select.outputs.gcp_project_id }}
+      gcp_wif_provider: ${{ steps.select.outputs.gcp_wif_provider }}
+      gcp_service_account: ${{ steps.select.outputs.gcp_service_account }}
+    steps:
+      - name: Resolve environment config
+        id: select
+        run: |
+          if [ -z "${ENVIRONMENT_NAME}" ] || [ -z "${GCP_PROJECT_ID}" ] || [ -z "${GCP_PROJECT_NUMBER}" ]; then
+            echo "ENVIRONMENT_NAME, GCP_PROJECT_ID, and GCP_PROJECT_NUMBER must be set in the config job env." >&2
+            exit 1
+          fi
+
+          TF_BACKEND_CONFIG="state_backend/${ENVIRONMENT_NAME}.hcl"
+          TF_VAR_FILE="variables/${ENVIRONMENT_NAME}.tfvars"
+          GCP_SERVICE_ACCOUNT="${TF_SA_ID}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+          GCP_WIF_PROVIDER="projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/providers/${WIF_PROVIDER_ID}"
+
+          {
+            echo "environment_name=${ENVIRONMENT_NAME}"
+            echo "tf_working_dir=${TF_WORKING_DIR}"
+            echo "tf_backend_config=${TF_BACKEND_CONFIG}"
+            echo "tf_var_file=${TF_VAR_FILE}"
+            echo "gcp_project_id=${GCP_PROJECT_ID}"
+            echo "gcp_wif_provider=${GCP_WIF_PROVIDER}"
+            echo "gcp_service_account=${GCP_SERVICE_ACCOUNT}"
+          } >> "${GITHUB_OUTPUT}"
+
+  plan:
+    needs: config
+    uses: ./.github/workflows/terraform-plan.yaml
+    with:
+      tf_backend_config: ${{ needs.config.outputs.tf_backend_config }}
+      tf_var_file: ${{ needs.config.outputs.tf_var_file }}
+      tf_working_dir: ${{ needs.config.outputs.tf_working_dir }}
+      gcp_workload_identity_provider: ${{ needs.config.outputs.gcp_wif_provider }}
+      gcp_service_account: ${{ needs.config.outputs.gcp_service_account }}
+      environment_name: ${{ needs.config.outputs.environment_name }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+  apply:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - config
+      - plan
+    uses: ./.github/workflows/terraform-apply.yaml
+    with:
+      tf_backend_config: ${{ needs.config.outputs.tf_backend_config }}
+      tf_var_file: ${{ needs.config.outputs.tf_var_file }}
+      tf_working_dir: ${{ needs.config.outputs.tf_working_dir }}
+      gcp_workload_identity_provider: ${{ needs.config.outputs.gcp_wif_provider }}
+      gcp_service_account: ${{ needs.config.outputs.gcp_service_account }}
+      environment_name: ${{ needs.config.outputs.environment_name }}
+    permissions:
+      contents: read
+      id-token: write

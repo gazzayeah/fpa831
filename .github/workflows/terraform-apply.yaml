@@ -1,0 +1,82 @@
+name: Terraform Apply
+
+on:
+  workflow_call:
+    inputs:
+      tf_backend_config:
+        required: true
+        type: string
+        description: "Backend config file path used by terraform init"
+      tf_var_file:
+        required: true
+        type: string
+        description: "Path to the Terraform variables file"
+      tf_working_dir:
+        required: true
+        type: string
+        description: "Directory containing the Terraform root module"
+      gcp_workload_identity_provider:
+        required: true
+        type: string
+        description: "GCP Workload Identity Federation provider resource name"
+      gcp_service_account:
+        required: true
+        type: string
+        description: "GCP service account email used for authentication"
+      environment_name:
+        required: true
+        type: string
+        description: "Logical environment label used in logs and artifacts (e.g. dev, staging, prod)"
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+          service_account: ${{ inputs.gcp_service_account }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        id: init
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: terraform init -backend-config="${{ inputs.tf_backend_config }}" -reconfigure -input=false
+
+      - name: Terraform Validate
+        id: validate
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: terraform validate -no-color
+
+      - name: Terraform Apply
+        id: apply
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: |
+          set -o pipefail
+          echo "Applying Terraform for environment: ${{ inputs.environment_name }}"
+          terraform apply \
+            -var-file="${{ inputs.tf_var_file }}" \
+            -no-color \
+            -input=false \
+            -auto-approve \
+            | tee "${GITHUB_WORKSPACE}/tfapply.txt"
+
+      - name: Upload Terraform apply log
+        if: always() && hashFiles('tfapply.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfapply-${{ inputs.environment_name }}-${{ github.run_id }}
+          path: tfapply.txt
+          if-no-files-found: ignore
+          retention-days: 7

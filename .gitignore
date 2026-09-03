@@ -219,3 +219,39 @@ __marimo__/
 
 # macOS
 .DS_Store
+**/.DS_Store
+
+# ADK / Agent Engine local artefacts
+.adk/
+**/.adk/
+.agent_engine_src/
+**/.agent_engine_src/
+*.sqlite
+
+# Never commit keys or ADC files
+*credentials*.json
+*-service-account*.json
+*.pem
+
+# Local Terraform plugin cache / working data
+**/.terraform/
+
+# Local Terraform state (remote GCS backend is source of truth)
+**/*.tfstate
+**/*.tfstate.*
+**/crash.log
+**/crash.*.log
+**/tfplan.data
+**/tfplan.txt
+**/tfapply.txt
+**/*.tfplan
+
+# Dependency lock (kept local-only, same as iac_main)
+**/.terraform.lock.hcl
+
+# Local Terraform overrides
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+**/.terraform.tfstate.lock.info

@@ -1,0 +1,162 @@
+name: Terraform Plan
+
+on:
+  workflow_call:
+    inputs:
+      tf_backend_config:
+        required: true
+        type: string
+        description: "Backend config file path used by terraform init"
+      tf_var_file:
+        required: true
+        type: string
+        description: "Path to the Terraform variables file"
+      tf_working_dir:
+        required: true
+        type: string
+        description: "Directory containing the Terraform root module"
+      gcp_workload_identity_provider:
+        required: true
+        type: string
+        description: "GCP Workload Identity Federation provider resource name"
+      gcp_service_account:
+        required: true
+        type: string
+        description: "GCP service account email used for authentication"
+      environment_name:
+        required: true
+        type: string
+        description: "Logical environment label shown in PR feedback (e.g. dev, staging, prod)"
+
+jobs:
+  validate_and_plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+          service_account: ${{ inputs.gcp_service_account }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Format
+        id: fmt
+        working-directory: ${{ github.workspace }}
+        run: terraform fmt -recursive -check
+
+      - name: Terraform Init
+        id: init
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: terraform init -backend-config="${{ inputs.tf_backend_config }}" -reconfigure -input=false
+
+      - name: Terraform Validate
+        id: validate
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ inputs.tf_working_dir }}
+        run: |
+          set +e
+          terraform plan \
+            -detailed-exitcode \
+            -var-file="${{ inputs.tf_var_file }}" \
+            -no-color \
+            -input=false \
+            -out="tfplan.data"
+          plan_exit_code=$?
+          set -e
+
+          terraform show -no-color tfplan.data > "${GITHUB_WORKSPACE}/tfplan.txt"
+
+          echo "plan_exit_code=${plan_exit_code}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${plan_exit_code}" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Upload Terraform plan artifact
+        if: always() && hashFiles('tfplan.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment_name }}-${{ github.run_id }}
+          path: |
+            tfplan.txt
+            ${{ inputs.tf_working_dir }}/tfplan.data
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Comment plan summary on pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
+          INIT_OUTCOME: ${{ steps.init.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+          PLAN_EXIT_CODE: ${{ steps.plan.outputs.plan_exit_code }}
+        with:
+          script: |
+            const fs = require('fs');
+            const maxLength = 60000;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const planPath = 'tfplan.txt';
+
+            let planBody = '(plan output unavailable)';
+            let truncatedNote = '';
+            if (fs.existsSync(planPath)) {
+              const planFile = fs.readFileSync(planPath, 'utf8');
+              if (planFile.length > maxLength) {
+                planBody = `${planFile.slice(0, maxLength)}\n...`;
+                truncatedNote = `Output truncated. Full plan is in the [workflow run artifacts](${runUrl}).\n\n`;
+              } else {
+                planBody = planFile;
+                truncatedNote = `Full plan binary/text also retained as a [workflow artifact](${runUrl}) (may contain sensitive values).\n\n`;
+              }
+            }
+
+            const changeLabel =
+              process.env.PLAN_EXIT_CODE === '2' ? 'changes detected' :
+              process.env.PLAN_EXIT_CODE === '0' ? 'no changes' :
+              'failed';
+
+            const body = [
+              `#### Environment \`${process.env.ENVIRONMENT_NAME}\``,
+              `#### Terraform Format \`${process.env.FMT_OUTCOME}\``,
+              `#### Terraform Initialization \`${process.env.INIT_OUTCOME}\``,
+              `#### Terraform Validation \`${process.env.VALIDATE_OUTCOME}\``,
+              `#### Terraform Plan \`${process.env.PLAN_OUTCOME}\` (${changeLabel})`,
+              '',
+              '> Warning: plan output can include infrastructure details. Prefer the artifact for review when uncertain about exposure.',
+              '',
+              truncatedNote,
+              '<details><summary>Show Plan</summary>',
+              '',
+              '```',
+              planBody,
+              '```',
+              '',
+              '</details>',
+              '',
+              `*Pusher: @${context.actor}, Action: \`${context.eventName}\`, Workflow: \`${process.env.GITHUB_WORKFLOW}\`*`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
