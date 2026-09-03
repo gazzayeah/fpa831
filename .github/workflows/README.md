@@ -25,6 +25,11 @@ private reusable workflow in another repository. WIF identities stay in
 Apply `github_repositories` in `iac_main` **before** this workflow can
 authenticate. Tenant state prefix is `fpa831/dev`, not `showcase/dev`.
 
+Plan/apply mint a WIF access token as `terraform-sa` (`token_format:
+access_token`) and pass it to Terraform as `GOOGLE_OAUTH_ACCESS_TOKEN`.
+That avoids a second impersonation hop via the ADC credentials file, which
+surfaces as `iam.serviceAccounts.getAccessToken` 403 on `terraform init`.
+
 ## Local Terraform
 
 CI keeps `terraform fmt -recursive -check`.

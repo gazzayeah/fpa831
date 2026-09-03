@@ -71,6 +71,8 @@ jobs:
           GCP_SERVICE_ACCOUNT="${TF_SA_ID}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
           GCP_WIF_PROVIDER="projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/providers/${WIF_PROVIDER_ID}"
 
+          echo "github.repository=${GITHUB_REPOSITORY} (WIF principalSet must match this exactly)"
+
           {
             echo "environment_name=${ENVIRONMENT_NAME}"
             echo "tf_working_dir=${TF_WORKING_DIR}"
@@ -90,6 +92,7 @@ jobs:
       tf_working_dir: ${{ needs.config.outputs.tf_working_dir }}
       gcp_workload_identity_provider: ${{ needs.config.outputs.gcp_wif_provider }}
       gcp_service_account: ${{ needs.config.outputs.gcp_service_account }}
+      gcp_project_id: ${{ needs.config.outputs.gcp_project_id }}
       environment_name: ${{ needs.config.outputs.environment_name }}
     permissions:
       contents: read
@@ -108,6 +111,7 @@ jobs:
       tf_working_dir: ${{ needs.config.outputs.tf_working_dir }}
       gcp_workload_identity_provider: ${{ needs.config.outputs.gcp_wif_provider }}
       gcp_service_account: ${{ needs.config.outputs.gcp_service_account }}
+      gcp_project_id: ${{ needs.config.outputs.gcp_project_id }}
       environment_name: ${{ needs.config.outputs.environment_name }}
     permissions:
       contents: read
