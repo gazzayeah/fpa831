@@ -1,8 +1,8 @@
-# Agent eval (FIN-001–005)
+# Agent eval (FIN-001–005) and Agent Engine deploy
 #
-# Model-free control and grounding checks. No WIF, Vertex, or Agent Engine.
-# Deploy stays a local stub (financial_processing_agent/deployment/deploy.py).
-# Path filters keep this off Terraform-only PRs.
+# Eval is model-free (no WIF). Deploy runs as terraform-sa after a green eval
+# on push to main, or on workflow_dispatch. Pull requests eval only.
+# Staging bucket is created by tenant Terraform (google_storage_bucket.agent_staging).
 
 name: Agent eval
 
@@ -11,6 +11,9 @@ on:
     paths:
       - "financial_processing_agent/**"
       - "docs/finance_rag_corpus/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
       - ".github/workflows/agent-eval.yaml"
   push:
     branches:
@@ -19,18 +22,38 @@ on:
     paths:
       - "financial_processing_agent/**"
       - "docs/finance_rag_corpus/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
       - ".github/workflows/agent-eval.yaml"
   workflow_dispatch:
+    inputs:
+      deploy_agent_engine:
+        description: Deploy Agent Engine as terraform-sa after eval (create or update)
+        type: boolean
+        default: true
+      agent_engine_resource:
+        description: Full name projects/.../reasoningEngines/ID (or numeric id). Empty = lookup display name or create (or repo var AGENT_ENGINE_RESOURCE)
+        type: string
+        default: ""
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: light-operator-364723
+  GCP_PROJECT_NUMBER: "450520581207"
+  GCP_REGION: us-central1
+  WIF_POOL_ID: github-pool
+  WIF_PROVIDER_ID: github-provider
+  AGENT_SA: agent-dev@light-operator-364723.iam.gserviceaccount.com
+  TF_SA_ID: terraform-sa
+  AGENT_STAGING_BUCKET: light-operator-364723-fpa831-agent-dev
 
 jobs:
   eval:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: financial_processing_agent
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +62,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
       - name: Sync workspace
         run: uv sync --extra dev --frozen
@@ -56,4 +79,75 @@ jobs:
             echo '```json'
             cat /tmp/eval.json
             echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  deploy:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_agent_engine == 'true')
+    needs: eval
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fpa831-agent-engine-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ".python-version"
+
+      - name: Authenticate as terraform-sa
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/${{ env.WIF_POOL_ID }}/providers/${{ env.WIF_PROVIDER_ID }}
+          service_account: ${{ env.TF_SA_ID }}@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Wait for staging bucket
+        env:
+          BUCKET: gs://${{ env.AGENT_STAGING_BUCKET }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            if gcloud storage buckets describe "${BUCKET}" >/dev/null 2>&1; then
+              echo "staging bucket ready"
+              exit 0
+            fi
+            echo "waiting for ${BUCKET} (${i}/12) — Tenant IaC apply creates it"
+            sleep 15
+          done
+          echo "Staging bucket missing. Apply iac/terraform (google_storage_bucket.agent_staging) then re-run this workflow." >&2
+          exit 1
+
+      - name: Deploy Agent Engine
+        env:
+          GOOGLE_GENAI_USE_VERTEXAI: "true"
+          GOOGLE_CLOUD_PROJECT: ${{ env.GCP_PROJECT_ID }}
+          GOOGLE_CLOUD_LOCATION: ${{ env.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          RESOURCE="${{ github.event.inputs.agent_engine_resource || vars.AGENT_ENGINE_RESOURCE }}"
+          uv sync --extra deploy --frozen --python 3.12
+          if [[ -z "${RESOURCE}" ]]; then
+            echo "No resource id; lookup display_name fpa831-agent-dev or create"
+          else
+            echo "Updating Agent Engine ${RESOURCE}"
+          fi
+          uv run python financial_processing_agent/deployment/deploy.py --apply --resource "${RESOURCE}" | tee /tmp/engine.out
+          NAME="$(sed -n 's/^AGENT_ENGINE_RESOURCE=//p' /tmp/engine.out | tail -1)"
+          {
+            echo "### Agent Engine"
+            echo "Resource: \`${NAME}\`"
+            echo "Runtime SA: \`${AGENT_SA}\` (deployed by terraform-sa)."
+            echo "Set repo variable \`AGENT_ENGINE_RESOURCE\` to this value so the next run updates if listing fails."
+            echo "Teardown: \`uv run python financial_processing_agent/deployment/deploy.py --delete ${NAME}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

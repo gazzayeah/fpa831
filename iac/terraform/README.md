@@ -1,8 +1,8 @@
 # Tenant Terraform (fpa831)
 
-Empty root on purpose: CI and local plan/apply should succeed before any
-agent resources are added. Later files (RAG index, buckets, secrets) belong
-here; project APIs, WIF, and `terraform-sa` do not.
+Owns tenant resources that are not in `iac_main`. Today that is the Agent
+Engine staging bucket (`google_storage_bucket.agent_staging`). Project APIs,
+WIF, `terraform-sa`, and `agent-dev` stay in the platform root.
 
 ## State
 

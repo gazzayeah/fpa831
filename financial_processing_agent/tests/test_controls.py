@@ -64,3 +64,13 @@ def test_submit_denied_without_approval():
         raise AssertionError("expected deny")
     except ToolDenied:
         pass
+
+
+def test_get_purchase_order_timeout_is_payload_not_raise():
+    """FIN-004 PO-4001 must return timeout=True so ADK does not abort the turn."""
+    from financial_processing_agent.tools.get_purchase_order import get_purchase_order
+
+    payload = get_purchase_order("PO-4001")
+    assert payload["timeout"] is True
+    assert payload["found"] is False
+    assert payload["po_id"] == "PO-4001"

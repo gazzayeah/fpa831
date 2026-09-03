@@ -8,7 +8,7 @@ Reusable Terraform workflows live at the top level of `.github/workflows/`
 | `terraform-plan.yaml` | Reusable plan workflow (`workflow_call`) |
 | `terraform-apply.yaml` | Reusable apply workflow (`workflow_call`) |
 | `tenant_iac_deployment.yaml` | Caller: plan/apply `iac/terraform` |
-| `agent-eval.yaml` | pytest + FIN-001–005 CLI eval (no GCP) |
+| `agent-eval.yaml` | pytest + FIN-001–005; Agent Engine deploy on `main` (after eval) |
 
 Copied from `iac_main` so this tenant repo can run CI without calling a
 private reusable workflow in another repository. WIF identities stay in
@@ -33,13 +33,22 @@ surfaces as `iam.serviceAccounts.getAccessToken` 403 on `terraform init`.
 
 ## `agent-eval.yaml`
 
-Runs on pull request, push to `main`/`master`, and `workflow_dispatch`
-when `financial_processing_agent/**`, `docs/finance_rag_corpus/**`, or
-this workflow file change. Uses `uv` against the nested
-`financial_processing_agent/pyproject.toml` (Python 3.12, `--extra dev`,
-`--frozen`). No WIF: eval is deterministic and does not call a model.
+**Eval** runs on pull request, push to `main`/`master`, and `workflow_dispatch`
+when `financial_processing_agent/**`, `docs/finance_rag_corpus/**`,
+`pyproject.toml`, `uv.lock`, `.python-version`, or this workflow file change.
+Uses `uv` at the **repository root** (Python 3.12, `--extra dev`, `--frozen`),
+matching `iac_main`. Eval does not call a model.
 
-`uv.lock` in that directory must be committed so `--frozen` is reproducible.
+**Deploy** runs after a green eval on **push to `main`/`master`**, and on
+`workflow_dispatch` when `deploy_agent_engine` is true. It authenticates as
+`terraform-sa` (WIF), waits for `gs://light-operator-364723-fpa831-agent-dev`
+(created by tenant Terraform), then
+`uv run python financial_processing_agent/deployment/deploy.py --apply`.
+Runtime SA is `agent-dev`. Set repo variable `AGENT_ENGINE_RESOURCE` after the
+first create so the next apply updates that engine if listing by display name
+fails.
+
+`uv.lock` at the repo root must be committed so `--frozen` is reproducible.
 
 ## Local Terraform
 

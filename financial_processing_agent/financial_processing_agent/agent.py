@@ -5,7 +5,11 @@ CLI and pytest use ``Workflow``, which does not need ADK. ``root_agent`` is
 None if google-adk is not installed so unit tests stay model-free.
 """
 
-from financial_processing_agent.prompts import GLOBAL_INSTRUCTION, RECOMMEND_INSTRUCTION
+from financial_processing_agent.prompts import (
+    GATHER_INSTRUCTION,
+    GLOBAL_INSTRUCTION,
+    RECOMMEND_INSTRUCTION,
+)
 from financial_processing_agent.shared_libraries.settings import settings
 from financial_processing_agent.tools import (
     check_invoice_history,
@@ -22,12 +26,12 @@ except ImportError:  # pragma: no cover - ADK optional for unit tests
     recommend_agent = None
     root_agent = None
 else:
-    # Interactive ``adk run`` graph only. Posting remains gated in Workflow.approve.
+    # Interactive adk web / Agent Engine graph. Posting remains gated in Workflow.approve.
     gather_agent = Agent(
         model=settings.agent_model,
         name="gather_agent",
         description="Retrieve policy, vendor, PO, and invoice history.",
-        instruction="Call read-only tools only. Do not submit a finance decision.",
+        instruction=GATHER_INSTRUCTION,
         tools=[
             retrieve_finance_documents,
             get_vendor_record,

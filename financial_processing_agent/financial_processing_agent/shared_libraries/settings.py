@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     run_store_path: str = ""
     corpus_dir: str = ""
     fixtures_dir: str = ""
+    # Agent Engine staging (Terraform google_storage_bucket.agent_staging).
+    agent_staging_bucket: str = "light-operator-364723-fpa831-agent-dev"
+    runtime_service_account: str = (
+        "agent-dev@light-operator-364723.iam.gserviceaccount.com"
+    )
 
     @property
     def package_root(self) -> Path:
@@ -39,9 +44,16 @@ class Settings(BaseSettings):
 
     @property
     def resolved_corpus_dir(self) -> Path:
-        """Policy markdown corpus used by retrieve_finance_documents."""
+        """Policy markdown corpus used by retrieve_finance_documents.
+
+        Agent Engine staging copies the corpus to ``bundled_corpus`` inside the
+        package so the remote container does not need the git repo layout.
+        """
         if self.corpus_dir:
             return Path(self.corpus_dir)
+        bundled = self.package_root / "bundled_corpus"
+        if bundled.is_dir():
+            return bundled
         return self.repo_root / "docs" / "finance_rag_corpus"
 
     @property
@@ -49,6 +61,9 @@ class Settings(BaseSettings):
         """JSON fixtures for vendor, PO, invoice history, and FIN-00x cases."""
         if self.fixtures_dir:
             return Path(self.fixtures_dir)
+        bundled = self.package_root / "bundled_fixtures"
+        if bundled.is_dir():
+            return bundled
         return self.package_root.parent / "fixtures"
 
     @property

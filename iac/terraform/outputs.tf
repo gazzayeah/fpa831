@@ -12,3 +12,8 @@ output "environment" {
   description = "Tenant environment label."
   value       = var.environment
 }
+
+output "agent_staging_bucket" {
+  description = "GCS bucket used as Vertex Agent Engine staging_bucket."
+  value       = google_storage_bucket.agent_staging.name
+}

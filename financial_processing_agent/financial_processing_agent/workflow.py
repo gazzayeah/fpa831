@@ -26,10 +26,7 @@ from financial_processing_agent.shared_libraries.schemas import (
 from financial_processing_agent.state.audit import AuditEvent
 from financial_processing_agent.state.run_state import RunState
 from financial_processing_agent.tools.check_invoice_history import check_invoice_history
-from financial_processing_agent.tools.get_purchase_order import (
-    PurchaseOrderTimeout,
-    get_purchase_order,
-)
+from financial_processing_agent.tools.get_purchase_order import get_purchase_order
 from financial_processing_agent.tools.get_vendor_record import get_vendor_record
 from financial_processing_agent.tools.reconcile_case import reconcile_case
 from financial_processing_agent.tools.retrieve_finance_documents import retrieve_finance_documents
@@ -40,21 +37,11 @@ from financial_processing_agent.utils.run_store import RunStore
 
 
 def _call(state: RunState, name: str, fn, *args, **kwargs):
-    """
-    Run an allow-listed tool with budget, timing, and audit logging.
-
-    PurchaseOrderTimeout is logged as ``timeout`` then re-raised so
-    ``Workflow._gather`` can record an unknown instead of failing the run.
-    """
+    """Run an allow-listed tool with budget, timing, and audit logging."""
     before_tool(state, name)
     started = time.perf_counter()
     try:
         result = fn(*args, **kwargs)
-    except PurchaseOrderTimeout:
-        duration = (time.perf_counter() - started) * 1000
-        state.tool_call_count += 1
-        log_tool_event(state, name, "timeout", duration, {"po_id": kwargs.get("po_id", args[0] if args else "")})
-        raise
     except Exception as exc:
         duration = (time.perf_counter() - started) * 1000
         state.tool_call_count += 1
@@ -62,7 +49,8 @@ def _call(state: RunState, name: str, fn, *args, **kwargs):
         raise
     duration = (time.perf_counter() - started) * 1000
     state.tool_call_count += 1
-    log_tool_event(state, name, "ok", duration, {})
+    outcome = "timeout" if isinstance(result, dict) and result.get("timeout") else "ok"
+    log_tool_event(state, name, outcome, duration, {})
     return result
 
 
@@ -213,14 +201,13 @@ class Workflow:
 
         po_id = state.case.po_id
         if po_id:
-            try:
-                po = _call(state, "get_purchase_order", get_purchase_order, po_id)
-                if po.get("found"):
-                    state.purchase_order = PurchaseOrderRecord.model_validate(
-                        {k: v for k, v in po.items() if k != "found"}
-                    )
-            except PurchaseOrderTimeout:
+            po = _call(state, "get_purchase_order", get_purchase_order, po_id)
+            if po.get("timeout"):
                 state.unknowns.append("purchase_order_timeout")
+            elif po.get("found"):
+                state.purchase_order = PurchaseOrderRecord.model_validate(
+                    {k: v for k, v in po.items() if k != "found"}
+                )
 
     def _reconcile(self, state: RunState) -> None:
         """Deterministic match/duplicate/policy outcome; sets AWAITING_APPROVAL or HOLD/REJECTED."""

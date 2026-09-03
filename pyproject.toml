@@ -2,7 +2,8 @@
 name = "financial-processing-agent"
 version = "0.1.0"
 description = "Accounts-payable RAG workflow agent (control and grounding)."
-requires-python = ">=3.12"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "pydantic>=2.0",
   "pydantic-settings>=2.0",
@@ -10,6 +11,11 @@ dependencies = [
 
 [project.optional-dependencies]
 adk = ["google-adk>=1.0"]
+deploy = [
+  "google-adk>=1.0",
+  "google-cloud-aiplatform[adk,agent_engines]>=1.93.0",
+  "cloudpickle>=3.0",
+]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
@@ -19,9 +25,12 @@ fpa = "financial_processing_agent.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+python-preference = "managed"
+
 [tool.hatch.build.targets.wheel]
-packages = ["financial_processing_agent"]
+packages = ["financial_processing_agent/financial_processing_agent"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "eval"]
-pythonpath = ["."]
+testpaths = ["financial_processing_agent/tests", "financial_processing_agent/eval"]
+pythonpath = ["financial_processing_agent"]

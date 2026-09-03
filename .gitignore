@@ -2,7 +2,7 @@
 .DS_Store
 **/.DS_Store
 
-# Python / uv (commit financial_processing_agent/uv.lock — CI uses --frozen)
+# Python / uv (commit uv.lock at repo root — CI uses --frozen)
 **/__pycache__/
 *.py[cod]
 *$py.class
@@ -14,6 +14,8 @@
 **/.ruff_cache/
 dist/
 build/
+**/bundled_corpus/
+**/bundled_fixtures/
 
 # Local env and secrets
 .env
