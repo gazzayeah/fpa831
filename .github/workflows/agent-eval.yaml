@@ -1,0 +1,59 @@
+# Agent eval (FIN-001–005)
+#
+# Model-free control and grounding checks. No WIF, Vertex, or Agent Engine.
+# Deploy stays a local stub (financial_processing_agent/deployment/deploy.py).
+# Path filters keep this off Terraform-only PRs.
+
+name: Agent eval
+
+on:
+  pull_request:
+    paths:
+      - "financial_processing_agent/**"
+      - "docs/finance_rag_corpus/**"
+      - ".github/workflows/agent-eval.yaml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "financial_processing_agent/**"
+      - "docs/finance_rag_corpus/**"
+      - ".github/workflows/agent-eval.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: financial_processing_agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync workspace
+        run: uv sync --extra dev --frozen
+
+      - name: Unit tests and FIN-001–005
+        run: uv run pytest -q
+
+      - name: Eval scorecard
+        run: |
+          set -euo pipefail
+          uv run python -m financial_processing_agent.cli eval | tee /tmp/eval.json
+          {
+            echo "### FIN-001–005"
+            echo '```json'
+            cat /tmp/eval.json
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

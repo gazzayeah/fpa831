@@ -1,0 +1,34 @@
+---
+description: Require detailed module and function comments on every new or changed file so new developers can follow the code.
+alwaysApply: true
+---
+
+# Comments and docstrings
+
+On every new module, class, and function you create or materially change, add comments a new developer can use without reading the rest of the repo.
+
+## Required
+
+- Module docstring: what the file is for, where it sits in the control path, and what it must not do.
+- Class/function docstring: why it exists, important args/returns/raises, and the policy or case it implements when that is non-obvious.
+- Short inline comments on non-obvious control flow (priority of rules, gates, replay, untrusted input) — not on every line.
+
+## Style
+
+- Prefer a docstring over a comment that restates the signature.
+- Do not narrate obvious code (`i += 1`).
+- Do not invent jargon; use names already in the file.
+
+```python
+# ❌ BAD
+def approve(run_id: str) -> RunState:
+    state = store.get(run_id)
+    ...
+
+# ✅ GOOD
+def approve(run_id: str, actor_id: str, idempotency_key: str) -> RunState:
+    """Human approval gate, then a single sandbox submit.
+
+    Same idempotency_key on an already SUBMITTED run is a no-op replay.
+    """
+```

@@ -1,0 +1,11 @@
+[
+  {
+    "record_id": "INV-HIST-500-PAID",
+    "invoice_reference": "INV-500",
+    "vendor_id": "V-DUP-200",
+    "amount": "500.00",
+    "currency": "AUD",
+    "status": "PAID",
+    "match_type": "none"
+  }
+]

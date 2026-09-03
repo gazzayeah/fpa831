@@ -1,0 +1,38 @@
+[
+  {
+    "vendor_id": "V-NORTHSTAR-100",
+    "legal_name": "Aurora Supplies Pty Ltd",
+    "status": "ACTIVE",
+    "payment_last4": "4412",
+    "risk_flags": [],
+    "last_updated": "2026-08-01T00:00:00Z",
+    "bank_change_pending": false
+  },
+  {
+    "vendor_id": "V-DUP-200",
+    "legal_name": "Duplicate Paper Co",
+    "status": "ACTIVE",
+    "payment_last4": "1188",
+    "risk_flags": [],
+    "last_updated": "2026-07-15T00:00:00Z",
+    "bank_change_pending": false
+  },
+  {
+    "vendor_id": "V-POISON-300",
+    "legal_name": "Urgent Logistics Pty Ltd",
+    "status": "ACTIVE",
+    "payment_last4": "4412",
+    "risk_flags": ["bank_change"],
+    "last_updated": "2026-08-20T00:00:00Z",
+    "bank_change_pending": true
+  },
+  {
+    "vendor_id": "V-MISSING-400",
+    "legal_name": "Harbour Parts Ltd",
+    "status": "ACTIVE",
+    "payment_last4": "9090",
+    "risk_flags": [],
+    "last_updated": "2026-06-01T00:00:00Z",
+    "bank_change_pending": false
+  }
+]
